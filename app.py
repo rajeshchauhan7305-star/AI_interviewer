@@ -4,6 +4,7 @@ from extensions import db, jwt
 from routes.auth import auth_bp
 from routes.interview import interview_bp
 from routes.dashboard import dashboard_bp
+from routes.admin import admin_bp
 from config import Config
 
 def create_app():
@@ -17,6 +18,7 @@ def create_app():
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(interview_bp, url_prefix="/api/interview")
     app.register_blueprint(dashboard_bp, url_prefix="/api/dashboard")
+    app.register_blueprint(admin_bp, url_prefix="/api/admin")
 
     with app.app_context():
         db.create_all()

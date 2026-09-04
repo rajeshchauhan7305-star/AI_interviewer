@@ -8,6 +8,12 @@ load_dotenv(BASE_DIR / ".env")
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "change-this-secret-key")
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-this-jwt-secret")
+    ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "").strip().lower()
+    ADMIN_EMAILS = {
+        email.strip().lower()
+        for email in os.getenv("ADMIN_EMAILS", ADMIN_EMAIL).split(",")
+        if email.strip()
+    }
     SQLALCHEMY_DATABASE_URI = os.getenv(
         "DATABASE_URL",
         f"sqlite:///{BASE_DIR / 'database.db'}"

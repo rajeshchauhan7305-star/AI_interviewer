@@ -23,6 +23,10 @@ function loggedIn() {
   return Boolean(localStorage.getItem("token"));
 }
 
+function isAdmin() {
+  return Boolean(user()?.is_admin);
+}
+
 function logout() {
   localStorage.removeItem("token");
   localStorage.removeItem("user");
@@ -37,9 +41,11 @@ function nav() {
         <div class="nav-actions">
           ${loggedIn() ? `
             <button class="btn btn-secondary" onclick="location.hash='#dashboard'">Dashboard</button>
+            <button class="btn btn-secondary" onclick="location.hash='#admin'">Admin Panel</button>
             <button class="btn btn-danger" onclick="logout()">Logout</button>
           ` : `
             <button class="btn btn-secondary" onclick="location.hash='#login'">Login</button>
+            <button class="btn btn-secondary" onclick="location.hash='#admin-login'">Admin Login</button>
             <button class="btn btn-primary" onclick="location.hash='#register'">Get Started</button>
           `}
         </div>
@@ -52,11 +58,13 @@ function render() {
   const route = location.hash || "#home";
   if (route === "#home") home();
   else if (route === "#login") login();
+  else if (route === "#admin-login") adminLogin();
   else if (route === "#register") register();
   else if (route === "#setup") setup();
   else if (route === "#interview") interview();
   else if (route.startsWith("#result")) result(route.split("/")[1]);
   else if (route === "#dashboard") dashboard();
+  else if (route === "#admin") adminDashboard();
   else home();
 }
 
@@ -122,6 +130,51 @@ function login() {
       localStorage.setItem("user", JSON.stringify(data.user));
       location.hash = "#dashboard";
     } catch (err) { toast(err.message); }
+  };
+}
+
+function adminLogin() {
+  app.innerHTML = `
+    ${nav()}
+    <main class="container page">
+      <div class="card form-card admin-login-card">
+        <h2>Admin Login</h2>
+        <form id="adminLoginForm">
+          <div class="form-group"><label>Admin User ID</label><input class="input" id="adminEmail" type="text" required placeholder="Enter admin user ID"></div>
+          <div class="form-group"><label>Password</label><input class="input" id="adminPassword" type="password" required placeholder="Enter password"></div>
+          <button class="btn btn-primary" style="width:100%">Open Admin Panel</button>
+        </form>
+      </div>
+    </main>
+  `;
+
+  document.getElementById("adminLoginForm").onsubmit = async event => {
+    event.preventDefault();
+    const button = event.target.querySelector("button");
+    button.disabled = true;
+    button.textContent = "Checking access...";
+    try {
+      const data = await api("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({
+          email: document.getElementById("adminEmail").value.trim(),
+          password: document.getElementById("adminPassword").value
+        })
+      });
+      if (!data.user?.is_admin) {
+        throw new Error("This account does not have admin access.");
+      }
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("user", JSON.stringify(data.user));
+      location.hash = "#admin";
+    } catch (err) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      toast(err.message);
+    } finally {
+      button.disabled = false;
+      button.textContent = "Open Admin Panel";
+    }
   };
 }
 
@@ -273,6 +326,12 @@ async function interview() {
         <section class="card">
           <div class="question-number" id="questionNo"></div>
           <div class="question-text" id="questionText"></div>
+          <div class="voice-actions">
+            <button class="btn btn-secondary" id="speakBtn" type="button">🔊 Hear question</button>
+            <button class="btn btn-secondary" id="listenBtn" type="button">🎙️ Answer by voice</button>
+            <button class="btn btn-secondary hidden" id="stopListenBtn" type="button">⏹ Stop listening</button>
+          </div>
+          <p class="voice-status" id="voiceStatus" role="status">Voice interview is ready.</p>
           <textarea id="answer" class="input" placeholder="Type your answer here..."></textarea>
           <div class="answer-actions">
             <button class="btn btn-secondary" id="backBtn">← Back</button>
@@ -283,8 +342,85 @@ async function interview() {
     </main>
   `;
 
+  const questionNo = document.getElementById("questionNo");
+  const questionText = document.getElementById("questionText");
+  const progressText = document.getElementById("progressText");
+  const progressBar = document.getElementById("progressBar");
+  const answer = document.getElementById("answer");
+  const backBtn = document.getElementById("backBtn");
+  const nextBtn = document.getElementById("nextBtn");
+  const speakBtn = document.getElementById("speakBtn");
+  const listenBtn = document.getElementById("listenBtn");
+  const stopListenBtn = document.getElementById("stopListenBtn");
+  const voiceStatus = document.getElementById("voiceStatus");
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const recognition = SpeechRecognition ? new SpeechRecognition() : null;
+  let isListening = false;
+
+  function speakQuestion() {
+    if (!window.speechSynthesis) {
+      voiceStatus.textContent = "Text-to-speech is not supported in this browser.";
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(questionText.textContent);
+    utterance.rate = 0.95;
+    window.speechSynthesis.speak(utterance);
+    voiceStatus.textContent = "Playing the question...";
+  }
+
+  function stopListening() {
+    if (recognition && isListening) recognition.stop();
+    isListening = false;
+    listenBtn.classList.remove("hidden");
+    stopListenBtn.classList.add("hidden");
+  }
+
+  if (recognition) {
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
+    recognition.onstart = () => {
+      isListening = true;
+      listenBtn.classList.add("hidden");
+      stopListenBtn.classList.remove("hidden");
+      voiceStatus.textContent = "Listening... speak your answer clearly.";
+    };
+    recognition.onresult = event => {
+      const transcript = Array.from(event.results)
+        .slice(event.resultIndex)
+        .map(result => result[0].transcript)
+        .join("");
+      answer.value += `${answer.value && !answer.value.endsWith(" ") ? " " : ""}${transcript}`;
+    };
+    recognition.onerror = event => {
+      voiceStatus.textContent = event.error === "not-allowed"
+        ? "Microphone permission was denied. You can type your answer instead."
+        : `Voice input error: ${event.error}.`;
+      stopListening();
+    };
+    recognition.onend = () => {
+      if (isListening) voiceStatus.textContent = "Voice input paused.";
+      stopListening();
+    };
+  } else {
+    listenBtn.disabled = true;
+    listenBtn.title = "Voice input is not supported in this browser";
+    voiceStatus.textContent = "Voice input is unavailable here. You can type your answer instead.";
+  }
+
+  speakBtn.onclick = speakQuestion;
+  listenBtn.onclick = () => {
+    if (!recognition) return;
+    answer.focus();
+    recognition.start();
+  };
+  stopListenBtn.onclick = stopListening;
+
   async function showQuestion() {
     const q = questions[index];
+    stopListening();
+    window.speechSynthesis?.cancel();
     questionNo.textContent = `Question ${index + 1}`;
     questionText.textContent = q.question;
     progressText.textContent = `${index + 1} of ${questions.length}`;
@@ -436,7 +572,10 @@ async function dashboard() {
 
         <div style="display:flex;justify-content:space-between;align-items:center;margin:30px 0 15px;gap:10px">
           <h2 style="margin:0">Interview History</h2>
-          <button class="btn btn-primary" onclick="location.hash='#setup'">+ New Interview</button>
+          <div class="dashboard-actions">
+            <button class="btn btn-secondary" onclick="location.hash='#admin'">⚙ Admin Panel</button>
+            <button class="btn btn-primary" onclick="location.hash='#setup'">+ New Interview</button>
+          </div>
         </div>
 
         <section class="card">
@@ -459,6 +598,67 @@ async function dashboard() {
     `;
   } catch (err) {
     app.innerHTML = `${nav()}<main class="container page"><div class="card"><h2>Dashboard error</h2><p>${escapeHtml(err.message)}</p></div></main>`;
+  }
+}
+
+async function adminDashboard() {
+  if (!loggedIn()) return location.hash = "#login";
+
+  app.innerHTML = `${nav()}<main class="container page"><div class="loading">Loading admin panel...</div></main>`;
+
+  try {
+    const data = await api("/admin/overview");
+    app.innerHTML = `
+      ${nav()}
+      <main class="container page">
+        <div class="page-title">
+          <h1>Admin Panel</h1>
+          <p>Monitor candidates, interviews and platform performance.</p>
+        </div>
+        <div class="metric-grid">
+          <div class="metric"><small>Total Users</small><strong>${data.stats.users}</strong></div>
+          <div class="metric"><small>Total Interviews</small><strong>${data.stats.interviews}</strong></div>
+          <div class="metric"><small>Completed</small><strong>${data.stats.completed_interviews}</strong></div>
+          <div class="metric"><small>Average Score</small><strong>${data.stats.average_score}%</strong></div>
+        </div>
+        <section class="card admin-section">
+          <h2>Users</h2>
+          <div class="admin-table-wrap"><table class="admin-table">
+            <thead><tr><th>Name</th><th>Email</th><th>Interviews</th><th>Joined</th><th></th></tr></thead>
+            <tbody>${data.users.map(item => `
+              <tr>
+                <td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.email)}</td>
+                <td>${item.interviews}</td><td>${new Date(item.created_at).toLocaleDateString()}</td>
+                <td><button class="btn btn-danger btn-small" data-delete-user="${item.id}">Delete</button></td>
+              </tr>`).join("")}</tbody>
+          </table></div>
+        </section>
+        <section class="card admin-section">
+          <h2>Recent Interviews</h2>
+          <div class="admin-table-wrap"><table class="admin-table">
+            <thead><tr><th>Candidate</th><th>Role</th><th>Status</th><th>Score</th><th>Date</th></tr></thead>
+            <tbody>${data.interviews.length ? data.interviews.map(item => `
+              <tr><td>${escapeHtml(item.candidate)}<small>${escapeHtml(item.email)}</small></td>
+              <td>${escapeHtml(item.job_role)}</td><td>${escapeHtml(item.status)}</td>
+              <td>${Math.round(item.score || 0)}%</td><td>${new Date(item.created_at).toLocaleDateString()}</td></tr>
+            `).join("") : `<tr><td colspan="5">No interviews yet.</td></tr>`}</tbody>
+          </table></div>
+        </section>
+      </main>
+    `;
+
+    document.querySelectorAll("[data-delete-user]").forEach(button => {
+      button.onclick = async () => {
+        if (!window.confirm("Delete this user and their interviews?")) return;
+        try {
+          await api(`/admin/users/${button.dataset.deleteUser}`, { method: "DELETE" });
+          toast("User deleted");
+          adminDashboard();
+        } catch (err) { toast(err.message); }
+      };
+    });
+  } catch (err) {
+    app.innerHTML = `${nav()}<main class="container page"><div class="card"><h2>Admin access error</h2><p>${escapeHtml(err.message)}</p></div></main>`;
   }
 }
 

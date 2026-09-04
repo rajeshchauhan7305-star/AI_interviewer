@@ -3,6 +3,7 @@ from flask_jwt_extended import create_access_token
 from werkzeug.security import generate_password_hash, check_password_hash
 from extensions import db
 from models.user import User
+from config import Config
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -36,7 +37,12 @@ def register():
     return {
         "message": "registration successful",
         "token": token,
-        "user": {"id": user.id, "name": user.name, "email": user.email}
+        "user": {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "is_admin": user.email in Config.ADMIN_EMAILS
+        }
     }, 201
 
 
@@ -57,5 +63,10 @@ def login():
     return {
         "message": "login successful",
         "token": token,
-        "user": {"id": user.id, "name": user.name, "email": user.email}
+        "user": {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "is_admin": user.email in Config.ADMIN_EMAILS
+        }
     }
