@@ -1,4 +1,12 @@
 const app = document.getElementById("app");
+let interviewTimer = null;
+document.documentElement.dataset.theme = localStorage.getItem("theme") === "dark" ? "dark" : "light";
+
+function toggleTheme() {
+  const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = nextTheme;
+  localStorage.setItem("theme", nextTheme);
+}
 
 function escapeHtml(value = "") {
   return String(value).replace(/[&<>"']/g, char => ({
@@ -45,6 +53,8 @@ function nav() {
             <button class="btn btn-danger" onclick="logout()">Logout</button>
           ` : `
             <button class="btn btn-secondary" onclick="location.hash='#dashboard'">Dashboard</button>
+            <button class="btn btn-secondary" onclick="location.hash='#resume'">Resume & Match</button>
+            <button class="btn btn-secondary" onclick="location.hash='#study'">Study Plan</button>
             <button class="btn btn-primary" onclick="location.hash='#setup'">New Interview</button>
             <button class="btn btn-danger" onclick="logout()">Logout</button>
           ` : `
@@ -53,6 +63,7 @@ function nav() {
             <span class="nav-divider" aria-hidden="true"></span>
             <button class="nav-admin-link" onclick="location.hash='#admin-login'">Admin Login</button>
           `}
+          <button class="theme-toggle" type="button" onclick="toggleTheme()" aria-label="Switch to ${document.documentElement.dataset.theme === "dark" ? "light" : "dark"} mode" title="Switch theme">${document.documentElement.dataset.theme === "dark" ? "☀" : "☾"}</button>
         </div>
       </div>
     </nav>
@@ -61,10 +72,14 @@ function nav() {
 
 function render() {
   const route = location.hash || "#home";
+  if (route !== "#interview" && interviewTimer !== null) {
+    clearInterval(interviewTimer);
+    interviewTimer = null;
+  }
 
   if (loggedIn()) {
     const isAdminRoute = route === "#admin" || route === "#admin-login";
-    const isUserRoute = route === "#login" || route === "#register" || route === "#dashboard" || route === "#setup" || route === "#interview" || route.startsWith("#result");
+    const isUserRoute = route === "#login" || route === "#register" || route === "#dashboard" || route === "#resume" || route === "#study" || route === "#setup" || route === "#interview" || route.startsWith("#result");
     if (isAdmin() && isUserRoute) {
       location.hash = "#admin";
       return;
@@ -82,6 +97,8 @@ function render() {
   else if (route === "#login") login();
   else if (route === "#admin-login") adminLogin();
   else if (route === "#register") register();
+  else if (route === "#resume") resumeAnalyzer();
+  else if (route === "#study") studyPlanPage();
   else if (route === "#setup") setup();
   else if (route === "#interview") interview();
   else if (route.startsWith("#result")) result(route.split("/")[1]);
@@ -314,6 +331,279 @@ function register() {
   };
 }
 
+async function resumeAnalyzer() {
+  if (!loggedIn()) return location.hash = "#login";
+  if (isAdmin()) return location.hash = "#admin";
+
+  app.innerHTML = `
+    ${nav()}
+    <main class="container page">
+      <div class="page-title">
+        <h1>Resume & job match</h1>
+        <p>Review your resume profile, then compare it with a target role.</p>
+      </div>
+      <div class="resume-workspace">
+        <section class="card resume-tool">
+          <span class="section-eyebrow">01 / PROFILE</span>
+          <h2>Analyze a resume</h2>
+          <p class="resume-help">PDF, DOC, or DOCX · 5 MB maximum. Uploaded files are parsed and not retained.</p>
+          <form id="resumeUploadForm">
+            <label class="resume-file-label" for="resumeFile">Choose resume</label>
+            <input class="input" type="file" id="resumeFile" name="file" accept=".pdf,.doc,.docx" required>
+            <button class="btn btn-primary" id="resumeUploadButton" type="submit">Analyze resume <span aria-hidden="true">↗</span></button>
+          </form>
+          <div id="resumeOutput" class="resume-output" role="status" aria-live="polite"></div>
+        </section>
+
+        <section class="card resume-tool">
+          <span class="section-eyebrow">02 / ROLE FIT</span>
+          <h2>Match a job description</h2>
+          <p class="resume-help">Paste the role details, or upload a plain-text .txt description.</p>
+          <form id="jobMatchForm">
+            <div class="form-group">
+              <label for="resumeSelection">Resume</label>
+              <select class="input" id="resumeSelection" required><option value="">Loading resumes...</option></select>
+            </div>
+            <div class="form-group">
+              <label for="jobTitle">Job title</label>
+              <input class="input" id="jobTitle" maxlength="120" placeholder="e.g. Python Backend Engineer">
+            </div>
+            <div class="form-group">
+              <label for="jobDescription">Job description</label>
+              <textarea class="input resume-description" id="jobDescription" required placeholder="Paste responsibilities, requirements, and skills..."></textarea>
+            </div>
+            <label class="resume-file-label" for="jobDescriptionFile">Or load a .txt file</label>
+            <input class="input" type="file" id="jobDescriptionFile" accept=".txt,text/plain">
+            <button class="btn btn-primary" id="jobMatchButton" type="submit">Compare with resume <span aria-hidden="true">↗</span></button>
+          </form>
+          <div id="jobMatchOutput" class="resume-output" role="status" aria-live="polite"></div>
+        </section>
+      </div>
+      <section class="resume-history">
+        <div class="resume-history-heading"><div><span class="section-eyebrow">YOUR FILES</span><h2>Saved resume analyses</h2></div></div>
+        <div id="resumeList" class="resume-list"><p class="loading">Loading your resumes...</p></div>
+      </section>
+    </main>
+  `;
+
+  const resumeForm = document.getElementById("resumeUploadForm");
+  const resumeSelect = document.getElementById("resumeSelection");
+  const resumeOutput = document.getElementById("resumeOutput");
+  const resumeList = document.getElementById("resumeList");
+  const matchOutput = document.getElementById("jobMatchOutput");
+  let savedResumes = [];
+
+  function showResume(resume) {
+    const profile = resume.profile || {};
+    const analysis = resume.analysis || {};
+    const values = items => Array.isArray(items) && items.length
+      ? `<ul>${items.map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+      : `<p class="resume-empty-value">None detected</p>`;
+    resumeOutput.innerHTML = `
+      <div class="resume-score-row"><div><span class="resume-label">Completeness score</span><strong>${Math.round(analysis.resume_score || 0)}%</strong></div><span class="resume-score-note">${escapeHtml(resume.filename)}</span></div>
+      <div class="resume-profile-line"><strong>${escapeHtml(profile.name || "Name not detected")}</strong><span>${escapeHtml(profile.email || "Email not detected")}${profile.phone ? ` · ${escapeHtml(profile.phone)}` : ""}</span></div>
+      <div class="resume-analysis-grid">
+        <section><h3>Skills detected</h3>${values(analysis.skills_detected || profile.skills)}</section>
+        <section><h3>Strong areas</h3>${values(analysis.strong_areas)}</section>
+        <section><h3>Areas to improve</h3>${values(analysis.weak_areas)}</section>
+        <section><h3>Suggested skills</h3>${values(analysis.recommended_skills)}</section>
+        <section><h3>Interview topics</h3>${values(analysis.recommended_interview_topics)}</section>
+        <section><h3>Role-specific gaps</h3>${values(analysis.missing_skills)}</section>
+      </div>
+      <p class="resume-summary">${escapeHtml(analysis.summary || "")}</p>
+    `;
+  }
+
+  function showMatch(match) {
+    const result = match.result || {};
+    const list = items => items?.length
+      ? `<ul>${items.map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+      : `<p class="resume-empty-value">No skills identified</p>`;
+    matchOutput.innerHTML = `
+      <div class="match-score-row"><strong>${Math.round(result.match_percentage || 0)}%</strong><span>estimated role match<br><small>${escapeHtml(match.title)}</small></span></div>
+      <div class="match-bar"><span style="width:${Math.max(0, Math.min(100, Number(result.match_percentage || 0)))}%"></span></div>
+      <div class="match-breakdown"><span>Skills ${Math.round(result.skill_match_percentage || 0)}%</span><span>Experience ${Math.round(result.experience_relevance_percentage || 0)}%</span></div>
+      <div class="resume-analysis-grid"><section><h3>Matching skills</h3>${list(result.matching_skills)}</section><section><h3>Missing skills</h3>${list(result.missing_skills)}</section><section><h3>Preparation topics</h3>${list(result.recommended_preparation_topics)}</section></div>
+      <p class="resume-summary">${escapeHtml(result.method || "")}</p>
+    `;
+  }
+
+  async function loadResumes(selectedId) {
+    const data = await api("/resumes");
+    savedResumes = data.resumes || [];
+    resumeSelect.innerHTML = `<option value="">Choose a saved resume</option>${savedResumes.map(resume => `<option value="${resume.id}">${escapeHtml(resume.filename)}</option>`).join("")}`;
+    if (selectedId) resumeSelect.value = String(selectedId);
+    resumeList.innerHTML = savedResumes.length
+      ? savedResumes.map(resume => `<div class="resume-list-row"><div><strong>${escapeHtml(resume.filename)}</strong><span>${new Date(resume.created_at).toLocaleDateString()} · ${Math.round(resume.analysis.resume_score || 0)}% completeness</span></div><button class="btn btn-secondary" type="button" data-select-resume="${resume.id}">Review</button></div>`).join("")
+      : `<p class="resume-empty">No resumes analyzed yet.</p>`;
+    resumeList.querySelectorAll("[data-select-resume]").forEach(button => {
+      button.onclick = () => {
+        const selected = savedResumes.find(resume => resume.id === Number(button.dataset.selectResume));
+        if (!selected) return;
+        resumeSelect.value = String(selected.id);
+        showResume(selected);
+        matchOutput.innerHTML = "";
+      };
+    });
+    if (selectedId) {
+      const selected = savedResumes.find(resume => resume.id === Number(selectedId));
+      if (selected) showResume(selected);
+    }
+  }
+
+  resumeForm.onsubmit = async event => {
+    event.preventDefault();
+    const button = document.getElementById("resumeUploadButton");
+    button.disabled = true;
+    button.textContent = "Extracting and analyzing...";
+    resumeOutput.innerHTML = `<p class="loading">Reading resume content...</p>`;
+    try {
+      const data = await api("/resumes/upload", { method: "POST", body: new FormData(resumeForm) });
+      await loadResumes(data.resume.id);
+      toast("Resume analysis saved.");
+    } catch (err) {
+      resumeOutput.innerHTML = `<p class="resume-error">${escapeHtml(err.message)}</p>`;
+    } finally {
+      button.disabled = false;
+      button.innerHTML = 'Analyze resume <span aria-hidden="true">↗</span>';
+    }
+  };
+
+  document.getElementById("jobDescriptionFile").onchange = async event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.size > 50000) {
+      toast("Job description text files must be 50 KB or smaller.");
+      event.target.value = "";
+      return;
+    }
+    document.getElementById("jobDescription").value = await file.text();
+  };
+
+  document.getElementById("jobMatchForm").onsubmit = async event => {
+    event.preventDefault();
+    const resumeId = resumeSelect.value;
+    if (!resumeId) return toast("Analyze or choose a resume first.");
+    const button = document.getElementById("jobMatchButton");
+    button.disabled = true;
+    button.textContent = "Comparing skills...";
+    try {
+      const data = await api(`/resumes/${resumeId}/match`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: document.getElementById("jobTitle").value.trim(),
+          description: document.getElementById("jobDescription").value.trim(),
+        }),
+      });
+      showMatch(data.match);
+      await loadResumes(resumeId);
+    } catch (err) {
+      matchOutput.innerHTML = `<p class="resume-error">${escapeHtml(err.message)}</p>`;
+    } finally {
+      button.disabled = false;
+      button.innerHTML = 'Compare with resume <span aria-hidden="true">↗</span>';
+    }
+  };
+
+  loadResumes().catch(err => {
+    resumeList.innerHTML = `<p class="resume-error">${escapeHtml(err.message)}</p>`;
+    resumeSelect.innerHTML = `<option value="">Could not load resumes</option>`;
+  });
+}
+
+async function studyPlanPage() {
+  if (!loggedIn()) return location.hash = "#login";
+  if (isAdmin()) return location.hash = "#admin";
+
+  app.innerHTML = `
+    ${nav()}
+    <main class="container page">
+      <div class="page-title">
+        <h1>Your study plan</h1>
+        <p>Turn interview feedback into small, trackable practice steps.</p>
+      </div>
+      <div class="study-toolbar">
+        <label for="studyPlanHistory">Plan history</label>
+        <select class="input" id="studyPlanHistory"><option value="">Loading plans...</option></select>
+        <button class="btn btn-primary" id="generateStudyPlan">Generate a 7-day plan <span aria-hidden="true">↗</span></button>
+      </div>
+      <section id="studyPlanOutput" class="study-plan-output"><div class="loading">Loading your study plans...</div></section>
+    </main>
+  `;
+
+  const historySelect = document.getElementById("studyPlanHistory");
+  const output = document.getElementById("studyPlanOutput");
+  let plans = [];
+
+  function renderPlan(plan) {
+    if (!plan) {
+      output.innerHTML = `<div class="study-empty"><span class="section-eyebrow">START SMALL</span><h2>No plan yet</h2><p>Generate a plan from your recent interview feedback and resume analysis, or start with a general interview-preparation path.</p></div>`;
+      return;
+    }
+    output.innerHTML = `
+      <div class="study-progress-header"><div><span class="section-eyebrow">PERSONALIZED ROUTE</span><h2>${escapeHtml(plan.title)}</h2><p>${escapeHtml(plan.source)}</p></div><strong>${plan.progress_percent}%<small> complete</small></strong></div>
+      <div class="progress study-progress"><div style="width:${Math.max(0, Math.min(100, plan.progress_percent))}%"></div></div>
+      <div class="study-task-list">${plan.tasks.map(task => `
+        <article class="study-task ${task.completed ? "is-complete" : ""}">
+          <label class="study-task-check"><input type="checkbox" data-task-day="${task.day}" ${task.completed ? "checked" : ""}><span>Day ${task.day}</span></label>
+          <div class="study-task-content"><h3>${escapeHtml(task.topic)}</h3><p>${escapeHtml(task.objective)}</p>${task.resource_url ? `<a href="${escapeHtml(task.resource_url)}" target="_blank" rel="noopener noreferrer">Open recommended resource <span aria-hidden="true">↗</span></a>` : `<small class="study-no-resource">Use your interview report and course notes as a starting point.</small>`}</div>
+        </article>
+      `).join("")}</div>
+    `;
+    output.querySelectorAll("[data-task-day]").forEach(checkbox => {
+      checkbox.onchange = async () => {
+        checkbox.disabled = true;
+        try {
+          const data = await api(`/study-plans/${plan.id}/tasks/${checkbox.dataset.taskDay}`, {
+            method: "PATCH",
+            body: JSON.stringify({ completed: checkbox.checked }),
+          });
+          renderPlan(data.plan);
+        } catch (err) {
+          toast(err.message);
+          checkbox.checked = !checkbox.checked;
+          checkbox.disabled = false;
+        }
+      };
+    });
+  }
+
+  async function loadPlans(selectedId) {
+    const data = await api("/study-plans");
+    plans = data.plans || [];
+    historySelect.innerHTML = plans.length
+      ? plans.map(plan => `<option value="${plan.id}">${escapeHtml(plan.title)} · ${new Date(plan.created_at).toLocaleDateString()}</option>`).join("")
+      : `<option value="">No saved plans</option>`;
+    const selected = plans.find(plan => plan.id === Number(selectedId)) || plans[0];
+    if (selected) historySelect.value = String(selected.id);
+    renderPlan(selected);
+  }
+
+  historySelect.onchange = () => {
+    renderPlan(plans.find(plan => plan.id === Number(historySelect.value)));
+  };
+
+  document.getElementById("generateStudyPlan").onclick = async event => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = "Building your plan...";
+    try {
+      const data = await api("/study-plans/generate", { method: "POST", body: JSON.stringify({}) });
+      await loadPlans(data.plan.id);
+      toast("Study plan created.");
+    } catch (err) {
+      toast(err.message);
+    } finally {
+      button.disabled = false;
+      button.innerHTML = 'Generate a 7-day plan <span aria-hidden="true">↗</span>';
+    }
+  };
+
+  loadPlans().catch(err => {
+    output.innerHTML = `<p class="resume-error">${escapeHtml(err.message)}</p>`;
+  });
+}
+
 function setup() {
   if (!loggedIn()) return location.hash = "#login";
 
@@ -337,6 +627,10 @@ function setup() {
             <label>Or enter a custom role</label>
             <input class="input" id="customRole" placeholder="e.g. Full Stack Developer">
           </div>
+          <div class="form-group">
+            <label for="technology">Technology or skill focus</label>
+            <input class="input" id="technology" maxlength="120" placeholder="e.g. Python, React, SQL">
+          </div>
         </section>
 
         <section class="card">
@@ -347,6 +641,17 @@ function setup() {
               <option value="easy">Easy</option>
               <option value="medium" selected>Medium</option>
               <option value="hard">Hard</option>
+              <option value="expert">Expert</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="experienceLevel">Experience level</label>
+            <select class="input" id="experienceLevel">
+              <option value="student">Student</option>
+              <option value="entry">Entry level</option>
+              <option value="junior">Junior</option>
+              <option value="intermediate" selected>Intermediate</option>
+              <option value="senior">Senior</option>
             </select>
           </div>
           <div class="form-group">
@@ -355,6 +660,10 @@ function setup() {
               <option>5</option><option>7</option><option>10</option>
             </select>
           </div>
+          <label class="adaptive-toggle" for="adaptiveInterview">
+            <input id="adaptiveInterview" type="checkbox">
+            <span><strong>Adaptive interview</strong><small>Questions respond to your previous answers.</small></span>
+          </label>
           <button class="btn btn-primary" style="width:100%;margin-top:12px" id="startBtn">Start Interview →</button>
         </section>
       </div>
@@ -386,7 +695,10 @@ function setup() {
         body: JSON.stringify({
           job_role,
           difficulty: document.getElementById("difficulty").value,
-          question_count: Number(document.getElementById("questionCount").value)
+          question_count: Number(document.getElementById("questionCount").value),
+          experience_level: document.getElementById("experienceLevel").value,
+          technology: document.getElementById("technology").value.trim(),
+          adaptive: document.getElementById("adaptiveInterview").checked
         })
       });
       sessionStorage.setItem("interview", JSON.stringify(data));
@@ -401,9 +713,32 @@ async function interview() {
   const saved = JSON.parse(sessionStorage.getItem("interview") || "null");
   if (!saved) return location.hash = "#setup";
 
-  let questions = saved.questions;
-  let index = Number(sessionStorage.getItem("question_index") || 0);
-  let analyses = [];
+  app.innerHTML = `${nav()}<main class="container page"><div class="loading">Restoring your interview...</div></main>`;
+
+  let interviewState;
+  try {
+    interviewState = await api(`/interview/${saved.interview_id}`);
+  } catch (err) {
+    toast(err.message);
+    location.hash = "#dashboard";
+    return;
+  }
+
+  if (interviewState.status === "completed") {
+    location.hash = `#result/${saved.interview_id}`;
+    return;
+  }
+
+  let questions = interviewState.questions || [];
+  let index = questions.findIndex(question => !question.answer);
+  if (index < 0 && questions.length) {
+    await api(`/interview/${saved.interview_id}/finish`, { method: "POST" });
+    location.hash = `#result/${saved.interview_id}`;
+    return;
+  }
+  if (!questions.length) return location.hash = "#setup";
+  sessionStorage.setItem("question_index", index);
+  const targetCount = Number(interviewState.question_count || saved.question_count || questions.length);
 
   app.innerHTML = `
     ${nav()}
@@ -413,8 +748,11 @@ async function interview() {
           <div class="question-number" id="progressText"></div>
           <div class="progress" style="margin:10px 0 20px"><div id="progressBar"></div></div>
           <div class="interview-meta">
-            <span class="chip">${escapeHtml(saved.job_role)}</span>
-            <span class="chip">${escapeHtml(saved.difficulty)}</span>
+            <span class="chip">${escapeHtml(interviewState.job_role)}</span>
+            <span class="chip">${escapeHtml(interviewState.difficulty)}</span>
+            <span class="chip">${escapeHtml(interviewState.experience_level)}</span>
+            ${interviewState.technology ? `<span class="chip">${escapeHtml(interviewState.technology)}</span>` : ""}
+            ${interviewState.adaptive ? '<span class="chip adaptive-chip">Adaptive</span>' : ""}
           </div>
           <hr style="border:0;border-top:1px solid var(--border);margin:22px 0">
           <p style="color:var(--muted);font-size:13px;line-height:1.7">
@@ -425,6 +763,7 @@ async function interview() {
 
         <section class="card">
           <div class="question-number" id="questionNo"></div>
+          <div class="question-timer" id="questionTimer" role="timer" aria-label="Time on current question">00:00</div>
           <div class="question-text" id="questionText"></div>
           <div class="voice-actions">
             <button class="btn btn-secondary" id="speakBtn" type="button">🔊 Hear question</button>
@@ -453,9 +792,21 @@ async function interview() {
   const listenBtn = document.getElementById("listenBtn");
   const stopListenBtn = document.getElementById("stopListenBtn");
   const voiceStatus = document.getElementById("voiceStatus");
+  const questionTimer = document.getElementById("questionTimer");
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const recognition = SpeechRecognition ? new SpeechRecognition() : null;
   let isListening = false;
+  let questionStartedAt = Date.now();
+  let speechStartedAt = null;
+  let speechDurationSeconds = 0;
+  let spokenWordCount = 0;
+  let fillerWordCount = 0;
+
+  if (interviewTimer !== null) clearInterval(interviewTimer);
+  interviewTimer = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - questionStartedAt) / 1000);
+    questionTimer.textContent = `${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}`;
+  }, 1000);
 
   function speakQuestion() {
     if (!window.speechSynthesis) {
@@ -471,6 +822,10 @@ async function interview() {
 
   function stopListening() {
     if (recognition && isListening) recognition.stop();
+    if (speechStartedAt !== null) {
+      speechDurationSeconds += (Date.now() - speechStartedAt) / 1000;
+      speechStartedAt = null;
+    }
     isListening = false;
     listenBtn.classList.remove("hidden");
     stopListenBtn.classList.add("hidden");
@@ -482,6 +837,7 @@ async function interview() {
     recognition.lang = "en-US";
     recognition.onstart = () => {
       isListening = true;
+      speechStartedAt = Date.now();
       listenBtn.classList.add("hidden");
       stopListenBtn.classList.remove("hidden");
       voiceStatus.textContent = "Listening... speak your answer clearly.";
@@ -492,6 +848,9 @@ async function interview() {
         .map(result => result[0].transcript)
         .join("");
       answer.value += `${answer.value && !answer.value.endsWith(" ") ? " " : ""}${transcript}`;
+      spokenWordCount += transcript.trim().split(/\s+/).filter(Boolean).length;
+      fillerWordCount += (transcript.match(/\b(?:um|uh|like|actually|basically)\b/gi) || []).length;
+      sessionStorage.setItem(`draft_answer_${questions[index].id}`, answer.value);
     };
     recognition.onerror = event => {
       voiceStatus.textContent = event.error === "not-allowed"
@@ -523,16 +882,26 @@ async function interview() {
     window.speechSynthesis?.cancel();
     questionNo.textContent = `Question ${index + 1}`;
     questionText.textContent = q.question;
-    progressText.textContent = `${index + 1} of ${questions.length}`;
-    progressBar.style.width = `${((index + 1) / questions.length) * 100}%`;
-    answer.value = sessionStorage.getItem(`answer_${q.id}`) || "";
+    progressText.textContent = `${index + 1} of ${targetCount}`;
+    progressBar.style.width = `${((index + 1) / targetCount) * 100}%`;
+    questionStartedAt = Date.now();
+    speechStartedAt = null;
+    speechDurationSeconds = 0;
+    spokenWordCount = 0;
+    fillerWordCount = 0;
+    questionTimer.textContent = "00:00";
+    answer.value = sessionStorage.getItem(`draft_answer_${q.id}`) || q.answer || "";
     backBtn.disabled = index === 0;
-    nextBtn.textContent = index === questions.length - 1 ? "Submit & Finish ✓" : "Submit & Continue →";
+    nextBtn.textContent = index === targetCount - 1 ? "Submit & Finish ✓" : "Submit & Continue →";
   }
+
+  answer.oninput = () => {
+    sessionStorage.setItem(`draft_answer_${questions[index].id}`, answer.value);
+  };
 
   backBtn.onclick = () => {
     if (index > 0) {
-      sessionStorage.setItem(`answer_${questions[index].id}`, answer.value);
+      sessionStorage.setItem(`draft_answer_${questions[index].id}`, answer.value);
       index--;
       sessionStorage.setItem("question_index", index);
       showQuestion();
@@ -543,6 +912,7 @@ async function interview() {
     const q = questions[index];
     const text = answer.value.trim();
     if (!text) return toast("Please enter an answer first.");
+    stopListening();
 
     nextBtn.disabled = true;
     nextBtn.textContent = "AI is analyzing...";
@@ -550,14 +920,29 @@ async function interview() {
     try {
       const data = await api(`/interview/${saved.interview_id}/answer`, {
         method: "POST",
-        body: JSON.stringify({ question_id: q.id, answer: text })
+        body: JSON.stringify({
+          question_id: q.id,
+          answer: text,
+          time_taken_seconds: Math.floor((Date.now() - questionStartedAt) / 1000),
+          speech_duration_seconds: Math.round(speechDurationSeconds),
+          spoken_word_count: spokenWordCount,
+          filler_word_count: fillerWordCount
+        })
       });
 
-      analyses[index] = data.question;
-      sessionStorage.setItem(`answer_${q.id}`, text);
+      sessionStorage.removeItem(`draft_answer_${q.id}`);
+      if (data.next_question) {
+        questions.slice(index + 1).forEach(previousQuestion => {
+          sessionStorage.removeItem(`draft_answer_${previousQuestion.id}`);
+        });
+        questions = questions.slice(0, index + 1);
+        questions.push(data.next_question);
+      }
 
-      if (index === questions.length - 1) {
-        await api(`/interview/${saved.interview_id}/finish`, { method: "POST" });
+      const shouldFinish = interviewState.adaptive ? data.complete : index === questions.length - 1;
+      if (shouldFinish) {
+        const completion = await api(`/interview/${saved.interview_id}/finish`, { method: "POST" });
+        if (completion.notifications?.length) toast(completion.notifications[0]);
         sessionStorage.removeItem("question_index");
         location.hash = `#result/${saved.interview_id}`;
       } else {
@@ -582,14 +967,17 @@ async function result(id) {
   try {
     const data = await api(`/interview/${id}/result`);
     const score = Math.round(data.overall_score || 0);
-    const first = data.questions?.[0];
+    const averageScore = field => {
+      const scores = (data.questions || []).map(question => Number(question[field] || 0));
+      return scores.length ? Math.round(scores.reduce((total, value) => total + value, 0) / scores.length) : 0;
+    };
 
     app.innerHTML = `
       ${nav()}
       <main class="container page">
         <div class="page-title">
           <h1>Interview Report 🎯</h1>
-          <p>${escapeHtml(data.job_role)} · ${escapeHtml(data.difficulty)} difficulty</p>
+          <p>${escapeHtml(data.job_role)} · ${escapeHtml(data.experience_level)} · ${escapeHtml(data.difficulty)} difficulty${data.technology ? ` · ${escapeHtml(data.technology)}` : ""}${data.adaptive ? " · Adaptive" : ""}</p>
         </div>
 
         <section class="card result-header">
@@ -605,16 +993,20 @@ async function result(id) {
               Review the category scores and personalized feedback below to improve your next interview.
             </p>
             <button class="btn btn-primary" onclick="location.hash='#setup'">Take Another Interview</button>
+            <button class="btn btn-secondary" id="downloadReportBtn" type="button">Download PDF</button>
           </div>
         </section>
 
         <div class="metric-grid">
           ${[
-            ["Technical", first?.technical_score],
-            ["Communication", first?.communication_score],
-            ["Relevance", first?.relevance_score],
-            ["Confidence", first?.confidence_score]
-          ].map(([label,val]) => `<div class="metric"><small>${label}</small><strong>${Math.round(val || 0)}%</strong></div>`).join("")}
+            ["Technical", "technical_score"],
+            ["Accuracy", "accuracy_score"],
+            ["Relevance", "relevance_score"],
+            ["Communication", "communication_score"],
+            ["Confidence", "confidence_score"],
+            ["Clarity", "clarity_score"],
+            ["Completeness", "completeness_score"]
+          ].map(([label, field]) => `<div class="metric"><small>${label}</small><strong>${averageScore(field)}%</strong></div>`).join("")}
         </div>
 
         <div class="feedback-grid">
@@ -630,11 +1022,27 @@ async function result(id) {
               <strong>Q${i+1}. ${escapeHtml(q.question)}</strong>
               <p style="color:var(--muted)"><b>Your answer:</b> ${escapeHtml(q.answer || "No answer")}</p>
               <p><b>Score:</b> ${Math.round(q.overall_score || 0)}% · ${escapeHtml(q.feedback || "")}</p>
+              <p><b>Suggested answer:</b> ${escapeHtml(q.suggested_answer || "")}</p>
+              <p><small>Question difficulty: ${escapeHtml(q.difficulty)} · Time: ${Math.round(q.time_taken_seconds || 0)} sec · ${q.spoken_word_count ? `${q.spoken_word_count} spoken words · ${Math.round(q.words_per_minute || 0)} WPM · ${q.filler_word_count} filler words` : "Typed response"}</small></p>
             </div>
           `).join("")}
         </section>
       </main>
     `;
+
+    document.getElementById("downloadReportBtn").onclick = async event => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      button.textContent = "Preparing PDF...";
+      try {
+        await downloadFile(`/interview/${id}/report.pdf`, `interview-report-${id}.pdf`);
+      } catch (err) {
+        toast(err.message);
+      } finally {
+        button.disabled = false;
+        button.textContent = "Download PDF";
+      }
+    };
   } catch (err) {
     app.innerHTML = `${nav()}<main class="container page"><div class="card"><h2>Unable to load report</h2><p>${escapeHtml(err.message)}</p><button class="btn btn-primary" onclick="location.hash='#dashboard'">Dashboard</button></div></main>`;
   }
@@ -660,7 +1068,7 @@ async function dashboard() {
       <main class="container page">
         <div class="page-title">
           <h1>Welcome back, ${escapeHtml(user()?.name || "Candidate")} 👋</h1>
-          <p>Track your interview progress and keep improving.</p>
+          <p>Track your interview progress and keep improving.${data.improvement_points !== null ? ` Latest score moved ${data.improvement_points >= 0 ? "+" : ""}${data.improvement_points} points versus the previous interview.` : " Complete another interview to see your progress trend."}</p>
         </div>
 
         <div class="metric-grid">
@@ -668,6 +1076,37 @@ async function dashboard() {
           <div class="metric"><small>Completed</small><strong>${data.completed_interviews}</strong></div>
           <div class="metric"><small>Average Score</small><strong>${data.average_score}%</strong></div>
           <div class="metric"><small>Best Score</small><strong>${data.best_score}%</strong></div>
+          <div class="metric"><small>Technical Average</small><strong>${data.completed_interviews ? `${Math.round(data.category_averages.technical_score)}%` : "—"}</strong></div>
+          <div class="metric"><small>Communication Average</small><strong>${data.completed_interviews ? `${Math.round(data.category_averages.communication_score)}%` : "—"}</strong></div>
+          <div class="metric"><small>Interview Streak</small><strong>${data.interview_streak} days</strong></div>
+        </div>
+
+        <section class="achievement-section">
+          <div class="achievement-heading"><div><span class="section-eyebrow">MILESTONES</span><h2>Achievements</h2></div></div>
+          <div class="achievement-grid">${data.achievements.map(item => `<div class="achievement-badge ${item.unlocked ? "unlocked" : "locked"}" aria-label="${escapeHtml(item.title)}: ${item.unlocked ? "unlocked" : "locked"}"><span aria-hidden="true">${item.unlocked ? "✦" : "○"}</span><div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.description)}</small></div></div>`).join("")}</div>
+        </section>
+
+        <div class="dashboard-analytics">
+          <section class="analytics-panel">
+            <div class="analytics-heading"><div><span class="section-eyebrow">SCORE HISTORY</span><h2>Performance over time</h2></div></div>
+            ${data.performance_over_time.length ? `<div class="trend-chart" role="img" aria-label="Interview scores over time">${data.performance_over_time.map(item => `<div class="trend-column" title="${escapeHtml(item.job_role)} · ${item.score}% · ${escapeHtml(item.date)}"><strong>${Math.round(item.score)}</strong><span class="trend-bar" style="height:${Math.max(4, Math.min(100, item.score))}%"></span><small>${escapeHtml(item.date.slice(5))}</small></div>`).join("")}</div>` : `<p class="analytics-empty">Completed interview scores will appear here.</p>`}
+          </section>
+          <section class="analytics-panel">
+            <div class="analytics-heading"><div><span class="section-eyebrow">BY ROLE</span><h2>Role performance</h2></div></div>
+            ${data.role_performance.length ? `<div class="role-chart">${data.role_performance.map(item => `<div class="role-chart-row"><div><strong>${escapeHtml(item.job_role)}</strong><span>${item.interviews} interview${item.interviews === 1 ? "" : "s"}</span></div><strong>${Math.round(item.average_score)}%</strong><i><b style="width:${Math.max(0, Math.min(100, item.average_score))}%"></b></i></div>`).join("")}</div>` : `<p class="analytics-empty">Role comparisons will appear after an interview is completed.</p>`}
+          </section>
+          <section class="analytics-panel">
+            <div class="analytics-heading"><div><span class="section-eyebrow">WHAT'S WORKING</span><h2>Strong topics</h2></div></div>
+            ${data.strong_topics.length ? `<ul class="topic-list">${data.strong_topics.map(item => `<li><span>${escapeHtml(item.topic)}</span><small>${item.count} mention${item.count === 1 ? "" : "s"}</small></li>`).join("")}</ul>` : `<p class="analytics-empty">Strengths will appear after you submit answers.</p>`}
+          </section>
+          <section class="analytics-panel">
+            <div class="analytics-heading"><div><span class="section-eyebrow">NEXT TO PRACTICE</span><h2>Growth topics</h2></div></div>
+            ${data.weak_topics.length ? `<ul class="topic-list weak-topics">${data.weak_topics.map(item => `<li><span>${escapeHtml(item.topic)}</span><small>${item.count} mention${item.count === 1 ? "" : "s"}</small></li>`).join("")}</ul>` : `<p class="analytics-empty">Suggestions from your reports will appear here.</p>`}
+          </section>
+          <section class="analytics-panel">
+            <div class="analytics-heading"><div><span class="section-eyebrow">VOICE PRACTICE</span><h2>Speaking metrics</h2></div></div>
+            ${data.voice_metrics.spoken_words ? `<div class="voice-metric-row"><div><strong>${data.voice_metrics.words_per_minute}</strong><span>words per minute</span></div><div><strong>${data.voice_metrics.filler_words}</strong><span>filler words</span></div><div><strong>${data.voice_metrics.speaking_seconds}s</strong><span>speaking time</span></div></div>` : `<p class="analytics-empty">Use voice answers to see recognized words, filler words, and speaking pace.</p>`}
+          </section>
         </div>
 
         <div style="display:flex;justify-content:space-between;align-items:center;margin:30px 0 15px;gap:10px">

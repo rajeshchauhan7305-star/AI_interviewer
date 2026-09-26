@@ -3,13 +3,14 @@ from secrets import compare_digest
 from flask import Blueprint, request
 from flask_jwt_extended import create_access_token
 from werkzeug.security import generate_password_hash, check_password_hash
-from extensions import db
+from extensions import db, limiter
 from models.user import User
 from config import Config
 
 auth_bp = Blueprint("auth", __name__)
 
 @auth_bp.post("/register")
+@limiter.limit("5 per hour")
 def register():
     data = request.get_json(silent=True) or {}
 
@@ -44,6 +45,7 @@ def register():
 
 
 @auth_bp.post("/admin-login")
+@limiter.limit("5 per minute")
 def admin_login():
     data = request.get_json(silent=True) or {}
 
@@ -77,6 +79,7 @@ def admin_login():
 
 
 @auth_bp.post("/login")
+@limiter.limit("10 per minute")
 def login():
     data = request.get_json(silent=True) or {}
 
