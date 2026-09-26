@@ -1,7 +1,7 @@
 from flask import Flask, send_from_directory
 from flask_cors import CORS
 from extensions import db, jwt
-from routes.auth import auth_bp
+from routes.auth import auth_bp, ensure_admin_account
 from routes.interview import interview_bp
 from routes.dashboard import dashboard_bp
 from routes.admin import admin_bp
@@ -22,6 +22,7 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        ensure_admin_account()
 
     @app.get("/")
     def home():

@@ -2,11 +2,12 @@ import json
 from datetime import datetime
 
 from flask import Blueprint, request
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import get_jwt_identity
 
 from extensions import db
 from models.interview import Interview
 from models.question import Question
+from routes.access import user_required
 from services.ai_service import generate_questions, analyze_answer
 
 interview_bp = Blueprint("interview", __name__)
@@ -31,7 +32,7 @@ def question_to_dict(q):
     }
 
 @interview_bp.post("/start")
-@jwt_required()
+@user_required
 def start_interview():
     data = request.get_json(silent=True) or {}
 
@@ -84,7 +85,7 @@ def start_interview():
 
 
 @interview_bp.get("/<int:interview_id>")
-@jwt_required()
+@user_required
 def get_interview(interview_id):
     interview = Interview.query.filter_by(
         id=interview_id,
@@ -105,7 +106,7 @@ def get_interview(interview_id):
 
 
 @interview_bp.post("/<int:interview_id>/answer")
-@jwt_required()
+@user_required
 def submit_answer(interview_id):
     interview = Interview.query.filter_by(
         id=interview_id,
@@ -159,7 +160,7 @@ def submit_answer(interview_id):
 
 
 @interview_bp.post("/<int:interview_id>/finish")
-@jwt_required()
+@user_required
 def finish_interview(interview_id):
     interview = Interview.query.filter_by(
         id=interview_id,
@@ -193,7 +194,7 @@ def finish_interview(interview_id):
 
 
 @interview_bp.get("/history/all")
-@jwt_required()
+@user_required
 def history():
     interviews = Interview.query.filter_by(
         user_id=current_user_id()
@@ -215,7 +216,7 @@ def history():
 
 
 @interview_bp.get("/<int:interview_id>/result")
-@jwt_required()
+@user_required
 def result(interview_id):
     interview = Interview.query.filter_by(
         id=interview_id,

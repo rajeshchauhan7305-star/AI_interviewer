@@ -1,12 +1,13 @@
 from flask import Blueprint
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import get_jwt_identity
 from extensions import db
 from models.interview import Interview
+from routes.access import user_required
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
 @dashboard_bp.get("")
-@jwt_required()
+@user_required
 def dashboard():
     user_id = int(get_jwt_identity())
 

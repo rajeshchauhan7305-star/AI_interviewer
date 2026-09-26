@@ -1,27 +1,12 @@
-from functools import wraps
-
 from flask import Blueprint
-from flask_jwt_extended import get_jwt_identity, jwt_required
+from flask_jwt_extended import get_jwt_identity
 
-from config import Config
 from extensions import db
 from models.interview import Interview
 from models.user import User
+from routes.access import admin_required
 
 admin_bp = Blueprint("admin", __name__)
-
-
-def admin_required(view):
-    @wraps(view)
-    @jwt_required()
-    def wrapped(*args, **kwargs):
-        user = db.session.get(User, int(get_jwt_identity()))
-        if not user or user.email not in Config.ADMIN_EMAILS:
-            return {"error": "admin access required"}, 403
-        return view(*args, **kwargs)
-
-    return wrapped
-
 
 @admin_bp.get("/overview")
 @admin_required

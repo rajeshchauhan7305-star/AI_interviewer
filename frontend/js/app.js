@@ -28,9 +28,10 @@ function isAdmin() {
 }
 
 function logout() {
+  const destination = isAdmin() ? "#admin-login" : "#login";
   localStorage.removeItem("token");
   localStorage.removeItem("user");
-  location.hash = "#login";
+  location.hash = destination;
 }
 
 function nav() {
@@ -39,14 +40,18 @@ function nav() {
       <div class="container" style="display:flex;justify-content:space-between;align-items:center;width:100%">
         <div class="brand"><div class="logo">AI</div> Interview Analyzer</div>
         <div class="nav-actions">
-          ${loggedIn() ? `
+          ${loggedIn() ? isAdmin() ? `
+            <button class="btn btn-secondary" onclick="location.hash='#admin'">Admin Console</button>
+            <button class="btn btn-danger" onclick="logout()">Logout</button>
+          ` : `
             <button class="btn btn-secondary" onclick="location.hash='#dashboard'">Dashboard</button>
-            <button class="btn btn-secondary" onclick="location.hash='#admin'">Admin Panel</button>
+            <button class="btn btn-primary" onclick="location.hash='#setup'">New Interview</button>
             <button class="btn btn-danger" onclick="logout()">Logout</button>
           ` : `
             <button class="btn btn-secondary" onclick="location.hash='#login'">Login</button>
-            <button class="btn btn-secondary" onclick="location.hash='#admin-login'">Admin Login</button>
             <button class="btn btn-primary" onclick="location.hash='#register'">Get Started</button>
+            <span class="nav-divider" aria-hidden="true"></span>
+            <button class="nav-admin-link" onclick="location.hash='#admin-login'">Admin Login</button>
           `}
         </div>
       </div>
@@ -56,6 +61,23 @@ function nav() {
 
 function render() {
   const route = location.hash || "#home";
+
+  if (loggedIn()) {
+    const isAdminRoute = route === "#admin" || route === "#admin-login";
+    const isUserRoute = route === "#login" || route === "#register" || route === "#dashboard" || route === "#setup" || route === "#interview" || route.startsWith("#result");
+    if (isAdmin() && isUserRoute) {
+      location.hash = "#admin";
+      return;
+    }
+    if (!isAdmin() && isAdminRoute) {
+      location.hash = "#dashboard";
+      return;
+    }
+  } else if (route === "#admin") {
+    location.hash = "#admin-login";
+    return;
+  }
+
   if (route === "#home") home();
   else if (route === "#login") login();
   else if (route === "#admin-login") adminLogin();
@@ -71,30 +93,56 @@ function render() {
 function home() {
   app.innerHTML = `
     ${nav()}
-    <main class="container hero">
-      <div class="hero-grid">
-        <section>
-          <span class="badge">✦ AI-powered interview practice</span>
-          <h1>Practice smarter.<br><span class="gradient">Interview better.</span></h1>
-          <p>
-            Take realistic mock interviews, answer role-specific questions,
-            and get instant AI-powered feedback on your technical knowledge,
-            communication, relevance and confidence.
-          </p>
-          <div class="hero-buttons">
-            <button class="btn btn-primary" onclick="location.hash='${loggedIn() ? "#setup" : "#register"}'">Start AI Interview →</button>
-            ${loggedIn() ? `<button class="btn btn-secondary" onclick="location.hash='#dashboard'">View Dashboard</button>` : ""}
+    <main class="home-page">
+      <section class="container hero home-hero">
+        <div class="hero-grid">
+          <section class="home-copy">
+            <span class="badge"><span class="status-dot"></span> YOUR NEXT INTERVIEW, REHEARSED</span>
+            <h1>Make practice<br>feel like the <span class="gradient">real thing.</span></h1>
+            <p>
+              Take a role-specific mock interview, answer by voice or text,
+              and get a clear AI report on what to sharpen next.
+            </p>
+            <div class="hero-buttons">
+              <button class="btn btn-primary home-cta" onclick="location.hash='${loggedIn() ? "#setup" : "#register"}'">Start a practice interview <span aria-hidden="true">↗</span></button>
+              ${loggedIn() ? `<button class="btn btn-secondary" onclick="location.hash='#dashboard'">Your dashboard</button>` : `<button class="btn btn-secondary" onclick="location.hash='#login'">Sign in</button>`}
+            </div>
+            <div class="home-trustline"><span class="trust-mark">01</span> No pressure. Just one better answer at a time.</div>
+          </section>
+
+          <section class="report-preview" aria-label="Example interview report preview">
+            <div class="preview-topline"><span class="preview-kicker">REPORT PREVIEW</span><span class="preview-status"><span class="status-dot"></span> COMPLETE</span></div>
+            <div class="preview-role"><div class="preview-role-icon">DS</div><div><strong>Data Analyst</strong><span>Mock interview · Medium</span></div><span class="preview-arrow" aria-hidden="true">↗</span></div>
+            <div class="preview-score-row"><div><span class="preview-label">Overall score</span><strong class="preview-score">84<span>%</span></strong></div><div class="score-ring" aria-hidden="true"><span>84</span></div></div>
+            <div class="preview-divider"></div>
+            <div class="preview-metrics">
+              <div><span>Technical</span><strong>85%</strong><i><b style="--fill:85%"></b></i></div>
+              <div><span>Communication</span><strong>78%</strong><i><b style="--fill:78%"></b></i></div>
+              <div><span>Relevance</span><strong>91%</strong><i><b style="--fill:91%"></b></i></div>
+              <div><span>Confidence</span><strong>82%</strong><i><b style="--fill:82%"></b></i></div>
+            </div>
+            <div class="preview-note"><span aria-hidden="true">✳</span><span><strong>One thing to build on</strong><br>Use a specific example to make your answer more memorable.</span></div>
+            <span class="preview-caption">Illustrative report preview</span>
+          </section>
+        </div>
+        <div class="capability-row" aria-label="Interview features">
+          <div><span class="capability-icon">↗</span><span>Questions for your target role</span></div>
+          <div><span class="capability-icon">◖</span><span>Speak or type your answers</span></div>
+          <div><span class="capability-icon">◎</span><span>Feedback you can act on</span></div>
+        </div>
+      </section>
+
+      <section class="practice-section">
+        <div class="container practice-inner">
+          <div class="practice-heading"><span class="section-eyebrow">A SIMPLE PRACTICE LOOP</span><h2>From “what if?”<br>to “I’ve got this.”</h2></div>
+          <div class="practice-steps">
+            <article class="practice-step"><span class="step-number">01</span><h3>Set your scene</h3><p>Choose a role, set the difficulty, and decide how many questions to take on.</p></article>
+            <article class="practice-step"><span class="step-number">02</span><h3>Find your rhythm</h3><p>Work through interview questions at your own pace. Answer by voice or type.</p></article>
+            <article class="practice-step"><span class="step-number">03</span><h3>Know what’s next</h3><p>Review your scores and feedback, then bring what you learned into your next round.</p></article>
           </div>
-        </section>
-        <section class="hero-card">
-          <div class="ai-orb">✦</div>
-          <h3 style="text-align:center">AI Interview Analysis</h3>
-          <div class="mini-score"><span>Technical Knowledge</span><strong>85%</strong></div>
-          <div class="mini-score"><span>Communication</span><strong>78%</strong></div>
-          <div class="mini-score"><span>Relevance</span><strong>91%</strong></div>
-          <div class="mini-score"><span>Overall</span><strong>84%</strong></div>
-        </section>
-      </div>
+          <div class="practice-footer"><span>Ready when you are.</span><button class="btn btn-primary" onclick="location.hash='${loggedIn() ? "#setup" : "#register"}'">Build your confidence <span aria-hidden="true">↗</span></button></div>
+        </div>
+      </section>
     </main>
   `;
 }
@@ -102,22 +150,67 @@ function home() {
 function login() {
   app.innerHTML = `
     ${nav()}
-    <main class="container page">
-      <div class="card form-card">
-        <h2>Welcome back 👋</h2>
-        <p style="color:var(--muted)">Login to continue your interview practice.</p>
-        <form id="loginForm">
-          <div class="form-group"><label>Email</label><input class="input" id="email" type="email" required placeholder="you@example.com"></div>
-          <div class="form-group"><label>Password</label><input class="input" id="password" type="password" required placeholder="••••••••"></div>
-          <button class="btn btn-primary" style="width:100%">Login</button>
-        </form>
-        <div class="form-footer">Don't have an account? <span class="link" onclick="location.hash='#register'">Create one</span></div>
+    <main class="container page auth-page">
+      <div class="auth-layout">
+        <section class="auth-story">
+          <span class="auth-eyebrow"><span class="status-dot"></span> AI INTERVIEW PRACTICE</span>
+          <h1>Good interviews<br>start <span>before</span><br>the interview.</h1>
+          <p>Pick up where you left off. Build your answers, find your pace, and walk into the next conversation prepared.</p>
+          <div class="auth-question" aria-label="Example interview question">
+            <div class="auth-question-top"><span>QUESTION PREVIEW</span><span>01 / 05</span></div>
+            <p>“Tell me about a project you’re proud of. What made it challenging?”</p>
+            <div class="auth-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="auth-question-foot"><span>ROLE-SPECIFIC</span><span>VOICE OR TEXT</span><span>YOUR OWN PACE</span></div>
+          </div>
+        </section>
+
+        <section class="auth-panel">
+          <div class="auth-panel-heading">
+            <span class="auth-small-label">YOUR PRACTICE SPACE</span>
+            <h2>Welcome back</h2>
+            <p>Sign in to continue your interview practice.</p>
+          </div>
+          <form id="loginForm">
+            <div class="form-group">
+              <label for="email">Email address</label>
+              <input class="input" id="email" type="email" autocomplete="email" required placeholder="you@example.com">
+            </div>
+            <div class="form-group">
+              <label for="password">Password</label>
+              <div class="password-field">
+                <input class="input" id="password" type="password" autocomplete="current-password" required placeholder="Enter your password">
+                <button class="password-toggle" id="togglePassword" type="button" aria-label="Show password" aria-pressed="false">Show</button>
+              </div>
+            </div>
+            <button class="btn btn-primary auth-submit" type="submit">Sign in <span aria-hidden="true">↗</span></button>
+            <p class="auth-status" id="loginStatus" role="status" aria-live="polite"></p>
+          </form>
+          <div class="auth-signup">New to Interview Analyzer? <a class="link" href="#register">Create an account <span aria-hidden="true">→</span></a></div>
+          <div class="auth-security"><span aria-hidden="true">◈</span> Your practice history stays linked to your account.</div>
+        </section>
       </div>
     </main>
   `;
 
-  document.getElementById("loginForm").onsubmit = async e => {
+  const loginForm = document.getElementById("loginForm");
+  const passwordInput = document.getElementById("password");
+  const passwordToggle = document.getElementById("togglePassword");
+  const loginStatus = document.getElementById("loginStatus");
+
+  passwordToggle.onclick = () => {
+    const showPassword = passwordInput.type === "password";
+    passwordInput.type = showPassword ? "text" : "password";
+    passwordToggle.textContent = showPassword ? "Hide" : "Show";
+    passwordToggle.setAttribute("aria-label", `${showPassword ? "Hide" : "Show"} password`);
+    passwordToggle.setAttribute("aria-pressed", String(showPassword));
+  };
+
+  loginForm.onsubmit = async e => {
     e.preventDefault();
+    const submitButton = loginForm.querySelector("button[type='submit']");
+    submitButton.disabled = true;
+    submitButton.textContent = "Signing in...";
+    loginStatus.textContent = "Signing in to your account...";
     try {
       const data = await api("/auth/login", {
         method: "POST",
@@ -129,7 +222,13 @@ function login() {
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
       location.hash = "#dashboard";
-    } catch (err) { toast(err.message); }
+    } catch (err) {
+      loginStatus.textContent = err.message;
+      toast(err.message);
+    } finally {
+      submitButton.disabled = false;
+      submitButton.innerHTML = 'Sign in <span aria-hidden="true">↗</span>';
+    }
   };
 }
 
@@ -140,7 +239,7 @@ function adminLogin() {
       <div class="card form-card admin-login-card">
         <h2>Admin Login</h2>
         <form id="adminLoginForm">
-          <div class="form-group"><label>Admin User ID</label><input class="input" id="adminEmail" type="text" required placeholder="Enter admin user ID"></div>
+          <div class="form-group"><label for="adminEmail">Admin email</label><input class="input" id="adminEmail" type="email" autocomplete="username" required placeholder="admin@example.com"></div>
           <div class="form-group"><label>Password</label><input class="input" id="adminPassword" type="password" required placeholder="Enter password"></div>
           <button class="btn btn-primary" style="width:100%">Open Admin Panel</button>
         </form>
@@ -154,7 +253,7 @@ function adminLogin() {
     button.disabled = true;
     button.textContent = "Checking access...";
     try {
-      const data = await api("/auth/login", {
+      const data = await api("/auth/admin-login", {
         method: "POST",
         body: JSON.stringify({
           email: document.getElementById("adminEmail").value.trim(),
@@ -207,9 +306,10 @@ function register() {
           password: document.getElementById("password").value
         })
       });
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("user", JSON.stringify(data.user));
-      location.hash = "#setup";
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      location.hash = "#login";
+      toast("Registration successful. Please login to continue.");
     } catch (err) { toast(err.message); }
   };
 }
@@ -573,7 +673,7 @@ async function dashboard() {
         <div style="display:flex;justify-content:space-between;align-items:center;margin:30px 0 15px;gap:10px">
           <h2 style="margin:0">Interview History</h2>
           <div class="dashboard-actions">
-            <button class="btn btn-secondary" onclick="location.hash='#admin'">⚙ Admin Panel</button>
+            ${isAdmin() ? '<button class="btn btn-secondary" onclick="location.hash=\'#admin\'">⚙ Admin Panel</button>' : ''}
             <button class="btn btn-primary" onclick="location.hash='#setup'">+ New Interview</button>
           </div>
         </div>
@@ -602,7 +702,11 @@ async function dashboard() {
 }
 
 async function adminDashboard() {
-  if (!loggedIn()) return location.hash = "#login";
+  if (!loggedIn()) return location.hash = "#admin-login";
+  if (!isAdmin()) {
+    app.innerHTML = `${nav()}<main class="container page"><div class="card"><h2>Admin access error</h2><p>admin access required</p></div></main>`;
+    return;
+  }
 
   app.innerHTML = `${nav()}<main class="container page"><div class="loading">Loading admin panel...</div></main>`;
 
