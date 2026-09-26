@@ -1,20 +1,22 @@
 import os
 from pathlib import Path
-from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent
-load_dotenv(BASE_DIR / ".env")
+
 
 class Config:
-    SECRET_KEY = os.getenv("SECRET_KEY", "change-this-secret-key")
-    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-this-jwt-secret")
-    ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "").strip().lower()
+    SECRET_KEY = os.getenv("SECRET_KEY", "change-me")
+    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-me")
+    ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "").strip()
     ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
-    ADMIN_EMAILS = {
-        email.strip().lower()
-        for email in f"{os.getenv('ADMIN_EMAILS', '')},{ADMIN_EMAIL}".split(",")
-        if email.strip()
-    }
+
+    admin_emails = []
+    for email in f"{os.getenv('ADMIN_EMAILS', '')},{ADMIN_EMAIL}".split(","):
+        value = email.strip().lower()
+        if value and value not in admin_emails:
+            admin_emails.append(value)
+    ADMIN_EMAILS = set(admin_emails)
+
     SQLALCHEMY_DATABASE_URI = os.getenv(
         "DATABASE_URL",
         f"sqlite:///{BASE_DIR / 'database.db'}"

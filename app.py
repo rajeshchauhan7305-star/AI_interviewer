@@ -1,5 +1,6 @@
 from flask import Flask, send_from_directory
 from flask_cors import CORS
+from sqlalchemy import inspect, text
 from werkzeug.exceptions import RequestEntityTooLarge
 from extensions import db, jwt, limiter, migrate
 from routes.auth import auth_bp, ensure_admin_account
@@ -9,6 +10,47 @@ from routes.admin import admin_bp
 from routes.resumes import resumes_bp
 from routes.study_plans import study_plans_bp
 from config import Config
+
+
+def ensure_database_schema():
+    with db.engine.begin() as connection:
+        inspector = inspect(connection)
+        tables = set(inspector.get_table_names())
+
+        if "interviews" in tables:
+            interview_columns = {col["name"] for col in inspector.get_columns("interviews")}
+            missing = [
+                ("experience_level", "VARCHAR(32)", "NOT NULL DEFAULT 'intermediate'"),
+                ("technology", "VARCHAR(120)", "NULL"),
+                ("adaptive", "BOOLEAN", "NOT NULL DEFAULT 0"),
+            ]
+            for column_name, column_type, column_constraints in missing:
+                if column_name not in interview_columns:
+                    sql = f"ALTER TABLE interviews ADD COLUMN {column_name} {column_type} {column_constraints}"
+                    connection.execute(text(sql))
+
+        if "questions" in tables:
+            question_columns = {col["name"] for col in inspector.get_columns("questions")}
+            missing = [
+                ("sequence_number", "INTEGER", "NULL"),
+                ("difficulty", "VARCHAR(30)", "NOT NULL DEFAULT 'medium'"),
+                ("is_follow_up", "BOOLEAN", "NOT NULL DEFAULT 0"),
+                ("accuracy_score", "FLOAT", "DEFAULT 0"),
+                ("clarity_score", "FLOAT", "DEFAULT 0"),
+                ("completeness_score", "FLOAT", "DEFAULT 0"),
+                ("time_taken_seconds", "FLOAT", "NOT NULL DEFAULT 0"),
+                ("speech_duration_seconds", "FLOAT", "NOT NULL DEFAULT 0"),
+                ("spoken_word_count", "INTEGER", "NOT NULL DEFAULT 0"),
+                ("filler_word_count", "INTEGER", "NOT NULL DEFAULT 0"),
+                ("words_per_minute", "FLOAT", "NOT NULL DEFAULT 0"),
+                ("suggested_answer", "TEXT", "NULL"),
+                ("follow_up_question", "TEXT", "NULL"),
+            ]
+            for column_name, column_type, column_constraints in missing:
+                if column_name not in question_columns:
+                    sql = f"ALTER TABLE questions ADD COLUMN {column_name} {column_type} {column_constraints}"
+                    connection.execute(text(sql))
+
 
 def create_app():
     app = Flask(__name__, static_folder="frontend", static_url_path="")
@@ -30,6 +72,7 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        ensure_database_schema()
         ensure_admin_account()
 
     @app.get("/")
