@@ -204,12 +204,34 @@ textarea.input { min-height: 180px; resize: vertical; }
 .loading { text-align: center; padding: 40px; color: var(--muted); }
 .admin-section { margin-top: 20px; }
 .admin-section h2 { margin-top: 0; }
+.admin-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.admin-section-heading h2 { margin-bottom: 0; }
+.admin-filters { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
+.admin-filters .input { flex: 1 1 190px; width: auto; }
+.admin-bulk-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0; }
+.admin-bulk-actions > label { display: flex; align-items: center; gap: 7px; }
+.admin-bulk-actions > span { color: var(--muted); font-size: 13px; }
+.admin-bulk-actions .input { flex: 0 1 200px; width: auto; }
+.admin-insights { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.admin-insights h3 { margin: 0 0 12px; font-size: 15px; }
+.admin-bar-row { display: grid; grid-template-columns: minmax(100px, 1fr) auto; gap: 5px 12px; align-items: center; margin: 12px 0; }
+.admin-bar-row > span { overflow: hidden; text-overflow: ellipsis; }
+.admin-bar-row > strong { font-size: 13px; }
+.admin-bar-row > i { grid-column: 1 / -1; height: 7px; overflow: hidden; border-radius: 99px; background: var(--border); }
+.admin-bar-row > i > b { display: block; height: 100%; border-radius: inherit; background: var(--primary); }
 .admin-table-wrap { overflow-x: auto; }
 .admin-table { width: 100%; border-collapse: collapse; min-width: 680px; }
 .admin-table th, .admin-table td { padding: 13px 10px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+.admin-table tr[hidden] { display: none; }
+.admin-table td[colspan] { white-space: normal; color: var(--muted); }
 .admin-table th { color: var(--muted); font-size: 12px; text-transform: uppercase; }
 .admin-table td small { display: block; color: var(--muted); margin-top: 4px; }
 .btn-small { padding: 7px 10px; font-size: 12px; }
+
+@media (max-width: 680px) {
+  .admin-insights { grid-template-columns: 1fr; }
+  .admin-section-heading { align-items: flex-start; }
+}
 
 .home-page {
   overflow: hidden;

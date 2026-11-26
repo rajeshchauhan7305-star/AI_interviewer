@@ -2,6 +2,10 @@ from flask import Flask, send_from_directory
 from flask_cors import CORS
 from sqlalchemy import inspect, text
 from werkzeug.exceptions import RequestEntityTooLarge
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from extensions import db, jwt, limiter, migrate
 from routes.auth import auth_bp, ensure_admin_account
 from routes.interview import interview_bp
@@ -16,6 +20,13 @@ def ensure_database_schema():
     with db.engine.begin() as connection:
         inspector = inspect(connection)
         tables = set(inspector.get_table_names())
+
+        if "users" in tables:
+            user_columns = {col["name"] for col in inspector.get_columns("users")}
+            if "is_active" not in user_columns:
+                connection.execute(text(
+                    "ALTER TABLE users ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1"
+                ))
 
         if "interviews" in tables:
             interview_columns = {col["name"] for col in inspector.get_columns("interviews")}

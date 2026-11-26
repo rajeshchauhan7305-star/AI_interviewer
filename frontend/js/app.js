@@ -50,6 +50,7 @@ function nav() {
         <div class="nav-actions">
           ${loggedIn() ? isAdmin() ? `
             <button class="btn btn-secondary" onclick="location.hash='#admin'">Admin Console</button>
+            <button class="btn btn-secondary" onclick="location.hash='#home'">Home</button>
             <button class="btn btn-danger" onclick="logout()">Logout</button>
           ` : `
             <button class="btn btn-secondary" onclick="location.hash='#dashboard'">Dashboard</button>
@@ -1151,6 +1152,9 @@ async function adminDashboard() {
 
   try {
     const data = await api("/admin/overview");
+    const interviewStatuses = Object.entries(data.interview_statuses || {});
+    const maxStatusCount = Math.max(1, ...interviewStatuses.map(([, count]) => count));
+    const roles = [...new Set(data.interviews.map(item => item.job_role))].sort();
     app.innerHTML = `
       ${nav()}
       <main class="container page">
@@ -1160,39 +1164,198 @@ async function adminDashboard() {
         </div>
         <div class="metric-grid">
           <div class="metric"><small>Total Users</small><strong>${data.stats.users}</strong></div>
+          <div class="metric"><small>Active Users</small><strong>${data.stats.active_users}</strong></div>
           <div class="metric"><small>Total Interviews</small><strong>${data.stats.interviews}</strong></div>
           <div class="metric"><small>Completed</small><strong>${data.stats.completed_interviews}</strong></div>
           <div class="metric"><small>Average Score</small><strong>${data.stats.average_score}%</strong></div>
         </div>
         <section class="card admin-section">
-          <h2>Users</h2>
+          <h2>Interview insights</h2>
+          <div class="admin-insights">
+            <div>
+              <h3>By status</h3>
+              ${interviewStatuses.length ? interviewStatuses.map(([status, count]) => `
+                <div class="admin-bar-row">
+                  <span>${escapeHtml(status)}</span><strong>${count}</strong>
+                  <i><b style="width:${Math.round(count / maxStatusCount * 100)}%"></b></i>
+                </div>
+              `).join("") : `<p style="color:var(--muted)">No interviews yet.</p>`}
+            </div>
+            <div>
+              <h3>Completed score by role</h3>
+              ${data.role_performance.length ? data.role_performance.map(item => `
+                <div class="admin-bar-row">
+                  <span>${escapeHtml(item.job_role)} <small>(${item.interviews})</small></span>
+                  <strong>${Math.round(item.average_score)}%</strong>
+                  <i><b style="width:${Math.max(0, Math.min(100, item.average_score))}%"></b></i>
+                </div>
+              `).join("") : `<p style="color:var(--muted)">No completed interviews yet.</p>`}
+            </div>
+          </div>
+        </section>
+        <section class="card admin-section">
+          <div class="admin-section-heading">
+            <h2>Users</h2>
+            <button class="btn btn-secondary btn-small" id="export-users">Export CSV</button>
+          </div>
+          <div class="admin-filters">
+            <input class="input" id="user-search" type="search" placeholder="Search name or email">
+            <select class="input" id="user-status-filter">
+              <option value="all">All account statuses</option>
+              <option value="active">Active</option>
+              <option value="suspended">Suspended</option>
+            </select>
+          </div>
+          <div class="admin-bulk-actions">
+            <label><input id="select-all-users" type="checkbox"> Select all users</label>
+            <span id="selected-user-count">0 selected</span>
+            <select class="input" id="bulk-user-action" aria-label="Bulk user action">
+              <option value="">Choose action</option>
+              <option value="suspend">Suspend selected</option>
+              <option value="reactivate">Reactivate selected</option>
+              <option value="delete">Delete selected</option>
+            </select>
+            <button class="btn btn-primary btn-small" id="apply-bulk-user-action" disabled>Apply</button>
+          </div>
           <div class="admin-table-wrap"><table class="admin-table">
-            <thead><tr><th>Name</th><th>Email</th><th>Interviews</th><th>Joined</th><th></th></tr></thead>
-            <tbody>${data.users.map(item => `
-              <tr>
-                <td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.email)}</td>
+            <thead><tr><th>Select</th><th>Name</th><th>Email</th><th>Status</th><th>Interviews</th><th>Joined</th><th>Actions</th></tr></thead>
+            <tbody>${data.users.length ? data.users.map(item => `
+              <tr data-user-row data-search="${escapeHtml(`${item.name} ${item.email}`.toLowerCase())}" data-user-status="${item.is_active ? "active" : "suspended"}">
+                <td>${item.is_admin ? "—" : `<input type="checkbox" data-user-select="${item.id}" aria-label="Select ${escapeHtml(item.name)}">`}</td>
+                <td>${escapeHtml(item.name)}${item.is_admin ? "<small>Admin</small>" : ""}</td>
+                <td>${escapeHtml(item.email)}</td>
+                <td>${item.is_admin ? "Admin" : item.is_active ? "Active" : "Suspended"}</td>
                 <td>${item.interviews}</td><td>${new Date(item.created_at).toLocaleDateString()}</td>
-                <td><button class="btn btn-danger btn-small" data-delete-user="${item.id}">Delete</button></td>
-              </tr>`).join("")}</tbody>
+                <td>${item.is_admin ? "—" : `
+                  <button class="btn btn-secondary btn-small" data-toggle-user="${item.id}" data-next-active="${!item.is_active}">${item.is_active ? "Suspend" : "Reactivate"}</button>
+                  <button class="btn btn-danger btn-small" data-delete-user="${item.id}">Delete</button>
+                `}</td>
+              </tr>`).join("") : `<tr><td colspan="7">No users yet.</td></tr>`}</tbody>
           </table></div>
         </section>
         <section class="card admin-section">
-          <h2>Recent Interviews</h2>
+          <div class="admin-section-heading">
+            <h2>Interviews</h2>
+            <button class="btn btn-secondary btn-small" id="export-interviews">Export CSV</button>
+          </div>
+          <div class="admin-filters">
+            <input class="input" id="interview-search" type="search" placeholder="Search candidate, email or role">
+            <select class="input" id="interview-status-filter">
+              <option value="all">All interview statuses</option>
+              ${interviewStatuses.map(([status]) => `<option value="${escapeHtml(status)}">${escapeHtml(status)}</option>`).join("")}
+            </select>
+            <select class="input" id="interview-role-filter">
+              <option value="all">All roles</option>
+              ${roles.map(role => `<option value="${escapeHtml(role)}">${escapeHtml(role)}</option>`).join("")}
+            </select>
+          </div>
           <div class="admin-table-wrap"><table class="admin-table">
-            <thead><tr><th>Candidate</th><th>Role</th><th>Status</th><th>Score</th><th>Date</th></tr></thead>
+            <thead><tr><th>Candidate</th><th>Role</th><th>Status</th><th>Score</th><th>Date</th><th>Details</th></tr></thead>
             <tbody>${data.interviews.length ? data.interviews.map(item => `
-              <tr><td>${escapeHtml(item.candidate)}<small>${escapeHtml(item.email)}</small></td>
-              <td>${escapeHtml(item.job_role)}</td><td>${escapeHtml(item.status)}</td>
-              <td>${Math.round(item.score || 0)}%</td><td>${new Date(item.created_at).toLocaleDateString()}</td></tr>
-            `).join("") : `<tr><td colspan="5">No interviews yet.</td></tr>`}</tbody>
+              <tr data-interview-row data-search="${escapeHtml(`${item.candidate} ${item.email} ${item.job_role}`.toLowerCase())}" data-interview-status="${escapeHtml(item.status)}" data-interview-role="${escapeHtml(item.job_role)}">
+                <td>${escapeHtml(item.candidate)}<small>${escapeHtml(item.email)}</small></td>
+                <td>${escapeHtml(item.job_role)}</td><td>${escapeHtml(item.status)}</td>
+                <td>${Math.round(item.score || 0)}%</td><td>${new Date(item.created_at).toLocaleDateString()}</td>
+                <td><button class="btn btn-secondary btn-small" data-interview-details="${item.id}" aria-expanded="false">Details</button></td>
+              </tr>
+              <tr id="interview-detail-${item.id}" hidden><td colspan="6">
+                Difficulty: ${escapeHtml(item.difficulty || "—")} · Experience: ${escapeHtml(item.experience_level || "—")} ·
+                Technology: ${escapeHtml(item.technology || "—")} · Questions: ${item.question_count ?? "—"} ·
+                Adaptive: ${item.adaptive ? "Yes" : "No"} · Completed: ${item.completed_at ? new Date(item.completed_at).toLocaleString() : "—"}
+              </td></tr>
+            `).join("") : `<tr><td colspan="6">No interviews yet.</td></tr>`}</tbody>
           </table></div>
         </section>
       </main>
     `;
 
+    const filterUsers = () => {
+      const query = document.getElementById("user-search").value.trim().toLowerCase();
+      const status = document.getElementById("user-status-filter").value;
+      document.querySelectorAll("[data-user-row]").forEach(row => {
+        row.hidden = !(row.dataset.search.includes(query) && (status === "all" || row.dataset.userStatus === status));
+      });
+    };
+    document.getElementById("user-search").oninput = filterUsers;
+    document.getElementById("user-status-filter").onchange = filterUsers;
+
+    const userSelections = [...document.querySelectorAll("[data-user-select]")];
+    const bulkAction = document.getElementById("bulk-user-action");
+    const bulkApply = document.getElementById("apply-bulk-user-action");
+    const selectAllUsers = document.getElementById("select-all-users");
+    const updateBulkSelection = () => {
+      const selectedCount = userSelections.filter(input => input.checked).length;
+      document.getElementById("selected-user-count").textContent = `${selectedCount} selected`;
+      bulkApply.disabled = selectedCount === 0 || !bulkAction.value;
+      selectAllUsers.checked = userSelections.length > 0 && selectedCount === userSelections.length;
+      selectAllUsers.indeterminate = selectedCount > 0 && selectedCount < userSelections.length;
+    };
+    userSelections.forEach(input => input.addEventListener("change", updateBulkSelection));
+    selectAllUsers.onchange = () => {
+      userSelections.forEach(input => { input.checked = selectAllUsers.checked; });
+      updateBulkSelection();
+    };
+    bulkAction.onchange = updateBulkSelection;
+    bulkApply.onclick = async () => {
+      const ids = userSelections.filter(input => input.checked).map(input => Number(input.dataset.userSelect));
+      const action = bulkAction.value;
+      if (!ids.length || !action) return;
+      const labels = { suspend: "suspend", reactivate: "reactivate", delete: "permanently delete" };
+      if (!window.confirm(`${labels[action]} ${ids.length} selected user${ids.length === 1 ? "" : "s"}${action === "delete" ? " and all their data" : ""}?`)) return;
+      try {
+        const result = await api("/admin/users/bulk", {
+          method: "PATCH",
+          body: JSON.stringify({ ids, action })
+        });
+        toast(`${result.updated} user${result.updated === 1 ? "" : "s"} updated`);
+        adminDashboard();
+      } catch (err) { toast(err.message); }
+    };
+
+    const filterInterviews = () => {
+      const query = document.getElementById("interview-search").value.trim().toLowerCase();
+      const status = document.getElementById("interview-status-filter").value;
+      const role = document.getElementById("interview-role-filter").value;
+      document.querySelectorAll("[data-interview-row]").forEach(row => {
+        const visible = row.dataset.search.includes(query) &&
+          (status === "all" || row.dataset.interviewStatus === status) &&
+          (role === "all" || row.dataset.interviewRole === role);
+        row.hidden = !visible;
+        const detail = document.getElementById(`interview-detail-${row.querySelector("[data-interview-details]").dataset.interviewDetails}`);
+        if (!visible) detail.hidden = true;
+      });
+    };
+    document.getElementById("interview-search").oninput = filterInterviews;
+    document.getElementById("interview-status-filter").onchange = filterInterviews;
+    document.getElementById("interview-role-filter").onchange = filterInterviews;
+
+    document.getElementById("export-users").onclick = () => downloadAdminCsv("users");
+    document.getElementById("export-interviews").onclick = () => downloadAdminCsv("interviews");
+    document.querySelectorAll("[data-interview-details]").forEach(button => {
+      button.onclick = () => {
+        const details = document.getElementById(`interview-detail-${button.dataset.interviewDetails}`);
+        details.hidden = !details.hidden;
+        button.setAttribute("aria-expanded", String(!details.hidden));
+      };
+    });
+
+    document.querySelectorAll("[data-toggle-user]").forEach(button => {
+      button.onclick = async () => {
+        const nextActive = button.dataset.nextActive === "true";
+        try {
+          await api(`/admin/users/${button.dataset.toggleUser}/status`, {
+            method: "PATCH",
+            body: JSON.stringify({ is_active: nextActive })
+          });
+          toast(nextActive ? "User reactivated" : "User suspended");
+          adminDashboard();
+        } catch (err) { toast(err.message); }
+      };
+    });
+
     document.querySelectorAll("[data-delete-user]").forEach(button => {
       button.onclick = async () => {
-        if (!window.confirm("Delete this user and their interviews?")) return;
+        if (!window.confirm("Permanently delete this user and all their data?")) return;
         try {
           await api(`/admin/users/${button.dataset.deleteUser}`, { method: "DELETE" });
           toast("User deleted");
@@ -1202,6 +1365,31 @@ async function adminDashboard() {
     });
   } catch (err) {
     app.innerHTML = `${nav()}<main class="container page"><div class="card"><h2>Admin access error</h2><p>${escapeHtml(err.message)}</p></div></main>`;
+  }
+}
+
+async function downloadAdminCsv(type) {
+  try {
+    const token = localStorage.getItem("token");
+    const response = await fetch(`${API_BASE}/admin/export.csv?type=${encodeURIComponent(type)}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    });
+    if (!response.ok) {
+      let data = {};
+      try { data = await response.json(); } catch (_) {}
+      throw new Error(data.error || `Export failed (${response.status})`);
+    }
+
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${type}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    toast(err.message);
   }
 }
 

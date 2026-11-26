@@ -63,6 +63,8 @@ def admin_login():
     user = User.query.filter_by(email=Config.ADMIN_EMAIL).first()
     if not user:
         return {"error": "admin account is not configured"}, 503
+    if not user.is_active:
+        return {"error": "admin account is suspended"}, 403
 
     token = create_access_token(identity=str(user.id))
 
@@ -93,6 +95,9 @@ def login():
 
     if not user or not check_password_hash(user.password_hash, password):
         return {"error": "invalid email or password"}, 401
+
+    if not user.is_active:
+        return {"error": "account is suspended"}, 403
 
     token = create_access_token(identity=str(user.id))
 

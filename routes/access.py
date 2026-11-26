@@ -14,6 +14,8 @@ def admin_required(view):
         user = db.session.get(User, int(get_jwt_identity()))
         if not user or user.email not in Config.ADMIN_EMAILS:
             return {"error": "admin access required"}, 403
+        if not user.is_active:
+            return {"error": "account is suspended"}, 403
         return view(*args, **kwargs)
 
     return wrapped
@@ -26,6 +28,8 @@ def user_required(view):
         user = db.session.get(User, int(get_jwt_identity()))
         if not user:
             return {"error": "user account not found"}, 401
+        if not user.is_active:
+            return {"error": "account is suspended"}, 403
         if user.email in Config.ADMIN_EMAILS:
             return {"error": "user access required"}, 403
         return view(*args, **kwargs)

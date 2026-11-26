@@ -47,7 +47,8 @@ Open `index.html` in VS Code using a local development server such as Live Serve
 - Question-by-question feedback
 - Dashboard
 - Interview history
-- Admin panel with user and interview monitoring
+- Admin panel with home navigation, user search, account suspension/reactivation, bulk account actions, and CSV export
+- Admin metrics, interview status/role insights, interview filters, and interview details
 - Responsive design
 
 ## 4. Backend URL
