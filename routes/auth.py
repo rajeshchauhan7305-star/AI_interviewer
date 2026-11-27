@@ -51,16 +51,17 @@ def admin_login():
 
     email = str(data.get("email", "")).strip().lower()
     password = str(data.get("password", ""))
+    admin_email = Config.ADMIN_EMAIL.strip().lower()
 
     if (
-        not Config.ADMIN_EMAIL
-        or email != Config.ADMIN_EMAIL
+        not admin_email
+        or email != admin_email
         or not Config.ADMIN_PASSWORD
         or not compare_digest(password, Config.ADMIN_PASSWORD)
     ):
         return {"error": "invalid admin credentials"}, 401
 
-    user = User.query.filter_by(email=Config.ADMIN_EMAIL).first()
+    user = User.query.filter_by(email=admin_email).first()
     if not user:
         return {"error": "admin account is not configured"}, 503
     if not user.is_active:
@@ -114,10 +115,11 @@ def login():
 
 
 def ensure_admin_account():
-    if not Config.ADMIN_EMAIL or not Config.ADMIN_PASSWORD:
+    admin_email = Config.ADMIN_EMAIL.strip().lower()
+    if not admin_email or not Config.ADMIN_PASSWORD:
         return
 
-    user = User.query.filter_by(email=Config.ADMIN_EMAIL).first()
+    user = User.query.filter_by(email=admin_email).first()
     password_hash = generate_password_hash(Config.ADMIN_PASSWORD)
 
     if user:
@@ -126,7 +128,7 @@ def ensure_admin_account():
     else:
         db.session.add(User(
             name=Config.ADMIN_NAME,
-            email=Config.ADMIN_EMAIL,
+            email=admin_email,
             password_hash=password_hash
         ))
 

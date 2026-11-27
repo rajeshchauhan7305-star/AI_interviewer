@@ -63,7 +63,7 @@ Or edit the `API_BASE` default in `js/api.js`.
 
 ## 5. Admin setup
 
-Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in the backend `.env` file. The admin account is created automatically when the backend starts. Use those credentials only on the Admin Login page.
+Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in the backend `.env` file, then restart the backend. The admin account is created automatically when the backend starts. The admin email is case-insensitive; the password must match exactly. Use those credentials only on the Admin Login page.
 
 ## 6. Important
 

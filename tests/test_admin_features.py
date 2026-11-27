@@ -32,7 +32,7 @@ class AdminFeatureTests(unittest.TestCase):
             Config.ADMIN_EMAILS,
             Config.ADMIN_PASSWORD,
         )
-        Config.ADMIN_EMAIL = "admin@example.test"
+        Config.ADMIN_EMAIL = "ADMIN@EXAMPLE.TEST"
         Config.ADMIN_EMAILS = {"admin@example.test"}
         Config.ADMIN_PASSWORD = "admin-test-password"
         cls.app = create_app()
