@@ -7,6 +7,7 @@ BASE_DIR = Path(__file__).resolve().parent
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "change-me")
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-me")
+    ADMIN_NAME = os.getenv("ADMIN_NAME", "Administrator").strip() or "Administrator"
     ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "").strip()
     ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 

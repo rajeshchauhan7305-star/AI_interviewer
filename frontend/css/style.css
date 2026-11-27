@@ -485,6 +485,13 @@ textarea.input { min-height: 180px; resize: vertical; }
 }
 @media (max-width: 560px) {
   .container { width: min(100% - 22px, 1180px); }
+  .navbar { height: auto; min-height: 72px; }
+  .navbar > .container { flex-wrap: wrap; gap: 8px; padding-block: 8px; }
+  .navbar .nav-actions { width: 100%; flex-wrap: wrap; justify-content: center; gap: 4px; }
+  .navbar .nav-actions .btn { padding: 8px 9px; font-size: 11px; white-space: nowrap; }
+  .navbar .nav-divider { height: 18px; margin: 0; }
+  .navbar .nav-admin-link { padding: 6px 2px; font-size: 10px; white-space: nowrap; }
+  .navbar .theme-toggle { width: 32px; height: 32px; flex: 0 0 32px; font-size: 15px; }
   .resume-analysis-grid { gap: 11px; }
   .resume-workspace { gap: 14px; }
   .study-toolbar { grid-template-columns: 1fr; }
@@ -504,6 +511,7 @@ textarea.input { min-height: 180px; resize: vertical; }
   .home-copy h1 { font-size: 43px; }
   .home-copy p { font-size: 15px; }
   .home-cta { width: 100%; justify-content: center; }
+  .home-copy .hero-buttons .btn-secondary { display: inline-flex; width: 100%; justify-content: center; }
   .report-preview { padding: 18px; }
   .capability-row { grid-template-columns: 1fr; gap: 12px; margin-top: 24px; padding: 18px 0; }
   .capability-row > div { justify-content: flex-start; }

@@ -59,6 +59,7 @@ function nav() {
             <button class="btn btn-primary" onclick="location.hash='#setup'">New Interview</button>
             <button class="btn btn-danger" onclick="logout()">Logout</button>
           ` : `
+            <button class="btn btn-secondary" onclick="location.hash='#home'">Home</button>
             <button class="btn btn-secondary" onclick="location.hash='#login'">Login</button>
             <button class="btn btn-primary" onclick="location.hash='#register'">Get Started</button>
             <span class="nav-divider" aria-hidden="true"></span>

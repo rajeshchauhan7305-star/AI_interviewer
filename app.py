@@ -4,6 +4,7 @@ from sqlalchemy import inspect, text
 from werkzeug.exceptions import RequestEntityTooLarge
 from dotenv import load_dotenv
 
+load_dotenv(".env.local")
 load_dotenv()
 
 from extensions import db, jwt, limiter, migrate

@@ -121,10 +121,11 @@ def ensure_admin_account():
     password_hash = generate_password_hash(Config.ADMIN_PASSWORD)
 
     if user:
+        user.name = Config.ADMIN_NAME
         user.password_hash = password_hash
     else:
         db.session.add(User(
-            name="Administrator",
+            name=Config.ADMIN_NAME,
             email=Config.ADMIN_EMAIL,
             password_hash=password_hash
         ))
